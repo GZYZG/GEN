@@ -133,10 +133,11 @@ def prec_rec(X, Y):
 import graph_edit_cycles
 import degree_rules
 import game_of_life
+import aids_degree_rules
 import random
 
-datasets = ['edit_cycles', 'degree_rules', 'game_of_life']
-dim_ins  = [4, 32, 1]
+datasets = ['aids_degree_rules', 'degree_rules', 'edit_cycles', 'game_of_life']
+dim_ins  = [64, 32, 4, 1]
 
 # set up a generative function for each data set
 def generate_edit_cycle():
@@ -163,7 +164,13 @@ def generate_game_of_life():
     As = [A] * len(Xs)
     Epsilons = [np.zeros_like(A)] * len(Xs)
     return As, Xs, deltas, Epsilons
-generator_funs = [generate_edit_cycle, generate_degree_rules, generate_game_of_life]
+
+
+def generate_aids_degree_rules():
+    # the maximum number of nodes that can occur in each graph during evolution
+    n_max  = 64
+    return aids_degree_rules.generate_time_series_from_random_graph(n_max = n_max)
+generator_funs = [generate_aids_degree_rules, generate_degree_rules, generate_edit_cycle, generate_game_of_life]
 
 
 # ### Actual Experiment

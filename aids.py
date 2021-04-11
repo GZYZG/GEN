@@ -24,6 +24,7 @@ import graph_edits as ge
 import networkx as nx
 from collections import Counter
 import random
+import os
 
 __author__ = 'Zhiyan guo'
 __copyright__ = f'Copyright 2019-2021, {__author__}'
@@ -39,6 +40,10 @@ edge_id_name = "id"
 AIDS_NODE_LABEL = ['Si', 'O', 'Se', 'Ni', 'Cl', 'Co', 'Tb', 'Bi', 'Ho', 'S', 'P', 'B', 'Pd', 'Cu', 'Br', 'Ru',
                    'C', 'Sn', 'Pt', 'Ga', 'N', 'Te', 'Hg', 'F', 'Pb', 'Li', 'Sb', 'I', 'As']
 AIDS_NODE_LABEL = sorted(AIDS_NODE_LABEL)
+
+# 约束条件
+NODE_NUM_LOWER_BOUND = 4
+EDGE_NUM_LOWER_BOUND = 4
 
 def extract_node_label_distribution(dataset):
     label_counter = Counter()
@@ -177,31 +182,113 @@ def gen_edit_num(loc=9, scale=5):
             return n
 
 
-def edit_graph(graph: nx.Graph, edit_num: int = None, seed=0, dataset=None, node_label_dis=None, neighbor_label_dis=None):
-    '''
+def nxgraph_to_adjlist(g: nx.Graph, directed=False):
+    nodes = list(g.nodes)
+    A = np.zeros(shape=(len(nodes), len(nodes)))
+    edges = list(g.edges)
+    for edge in edges:
+        u = nodes.index(edge[0])
+        v = nodes.index(edge[1])
+        A[u,v] = 1
+        if not directed:
+            A[v,u] = 1
 
+    return A
+
+
+def nxgraph_to_feature_matrix(g: nx.Graph, node_label_name="type", node_labels=[]):
+    assert len(node_labels) != 0
+    nodes = list(g.nodes)
+    X = np.zeros(shape=(len(nodes), len(node_labels)))
+    for idx, node in enumerate(nodes):
+        label = g.nodes[node][node_label_name]
+        label_idx = node_labels.index(label)
+        X[idx, label_idx] = 1
+
+    return X
+
+
+def is_graph_connected():
+    pass
+
+
+def can_del_node(index, edits):
+    for edit in edits:
+        if isinstance(edit, ge.NodeDeletion):
+            if edit._index == index:
+                return False
+        elif isinstance(edit, ge.NodeInsertion):
+            if edit._index == index:
+                return False
+        elif isinstance(edit, ge.EdgeInsertion):
+            if edit._i == index or edit._j == index:
+                return False
+        elif isinstance(edit, ge.EdgeDeletion):
+            continue
+    return True
+
+
+def can_add_node(index, edits):
+    for edit in edits:
+        if isinstance(edit, ge.NodeDeletion):
+            if edit._index == index:
+                return False
+        elif isinstance(edit, ge.NodeInsertion):
+            continue
+        elif isinstance(edit, ge.EdgeInsertion):
+            continue
+        elif isinstance(edit, ge.EdgeDeletion):
+            continue
+    return True
+
+
+def can_del_edge(i, j, edits):
+    for edit in edits:
+        if isinstance(edit, ge.NodeDeletion):
+            if edit._index == i or edit._index == j:
+                return False
+        elif isinstance(edit, ge.NodeInsertion):
+            continue
+        elif isinstance(edit, (ge.EdgeInsertion, ge.EdgeDeletion)):
+            if (edit._i == i and edit._j == j) or (edit._i == j and edit._j == i):
+                return False
+    return True
+
+
+def can_add_edge(i, j, edits):
+    for edit in edits:
+        if isinstance(edit, ge.NodeDeletion):
+            if edit._index == i or edit._index == j:
+                return False
+        elif isinstance(edit, ge.NodeInsertion):
+            continue
+        elif isinstance(edit, (ge.EdgeInsertion, ge.EdgeDeletion)):
+            if (edit._i == i and edit._j == j) or (edit._i == j and edit._j == i):
+                return False
+    return True
+
+
+def edit_graph(graph: nx.Graph, edit_num: int = None, node_label_dis=None, neighbor_label_dis=None, seed=0):
+    '''
+    每一次的编辑中不能有冲突的操作，这里的一次编辑可以包含多个编辑操作，一次指的是连续的不会产生冲突的编辑序列.
+    1）新增结点时，不能删除与之相连的结点；
+    2）不能增加了边又删除该边，可以不用考虑，因为在一次编辑中；
+    3）不能删除了边又增加该边；
+    4）不能删除了结点又在该结点的基础上增加边/结点，删除边/结点；
+    5）
     :param graph:
     :param edit_num:
     :param seed:
-    :param dataset:
     :return:
     '''
-    if not dataset:
-        raise RuntimeError("Please specify one dataset: AIDS, LINUX, IMDB-MULTI")
 
     node_labels = AIDS_NODE_LABEL
 
-    tar = graph.copy()
+    tar = graph
     # print(tar)
-    epd = EditPathData(graph, tar, [])
-    delta = None
-    Epsilon = None
-
+    edits = []
 
     np.random.seed(seed)
-    if edit_num is None:
-        edit_num = gen_edit_num()
-
     def gen_node_id(g: nx.Graph):
         nid = g.nodes.__len__()
         while True:
@@ -211,116 +298,68 @@ def edit_graph(graph: nx.Graph, edit_num: int = None, seed=0, dataset=None, node
             nid += 1
     node_id_gen = gen_node_id(tar)
 
-    max_node_id = tar.nodes.__len__()-1     # 注意！！！结点的id可能是不连续的！！！
-    max_edge_id = tar.nodes.__len__()-1
     i = 0
+
     while i < edit_num:
         r = np.random.rand()
         try:
             nodes = list(tar.nodes)
             if r < .18:  # 增加一个结点， 同时要为其增加一条边
-                max_node_id += 1
                 nid_1 = str(next(node_id_gen))
                 label = nid_1 if not node_labels else weighted_sample(node_label_dis)  # random.sample(node_labels, 1)[0]
+                new_node_attr = [0]*len(node_labels)
+                new_node_attr[node_labels.index(label)] = 1
                 # 为新增的结点增加一条边，选择另一结点
                 index = sample_neighbor_node_label(tar, -1, label, neighbor_label_dis, node_label_name=node_label_name)  # random.sample(tar.nodes, 1)[0]
-                nid_2 = nodes[index]
-                max_edge_id += 1
-                order2 = nodes.index(nid_2)
-                node1_attr = {node_label_name: label, node_id_name: nid_1}
-                node2_attr = tar.nodes[nid_2]
-
-                node1 = node_labels.index(label)
-                node2 = order2
-
-                e = EditElement(EditType.ADD_NODE, node1, node2, label, node1_attr, node2_attr)
-
-                tar.add_node(nid_1)
-                tar.nodes[nid_1][node_label_name] = label
-                tar.nodes[nid_1][node_id_name] = nid_1
-                tar.add_edge(nid_1, nid_2)
-                tar.edges[nid_1, nid_2][edge_id_name] = str(max_edge_id)
-                # print(f"add node : {nid}\t{tar.nodes}")
+                if not can_add_node(index, edits):
+                    continue
+                edit = ge.NodeInsertion(index, attribute=new_node_attr, directed=False)
             elif r < .3:  # 删除一个结点
                 if tar.nodes.__len__() <= NODE_NUM_LOWER_BOUND:  # 判断是否低于结点的最低数量
                     print(f"Node num will lower than NODE_NUM_LOWER_BOUND({NODE_NUM_LOWER_BOUND}) ! Node delete operation is aborted!")
                     continue
                 index = sample_node(tar, node_label_dis, node_label_name=node_label_name)  # random.sample(tar.nodes, 1)[0]
-                nid = nodes[index]
-                # e = EditNode("del", nid)
-                tar_copy = tar.copy()
-                tar_copy.remove_node(nid)
-                if not nx.is_connected(tar_copy):  # 如果导致不连通则抛弃这个操作
-                    print(f"Graph will be disconnected if delete node {nid}! Node delete operation is aborted!")
+                if not can_del_node(index, edits):
                     continue
-                order = nodes.index(nid)
-                node_attr = tar.nodes[nid]
-                node1 = order
-                node2 = [nodes.index(nb) for nb in tar.neighbors(nid)]
-
-                e = EditElement(EditType.DEL_NODE, node1, node2, node1_attr=node_attr)
-                tar.remove_node(nid)
-                # print(f"del node : {nid}\t{tar.nodes}")
+                edit = ge.NodeDeletion(index)
             elif r < .68:  # 增加一条边
                 nid_1, nid_2 = random.sample(tar.nodes, 2)
-                if (not nid_1 in tar) or (not nid_2 in tar):
-                    raise RuntimeError("增加边时，结点不在图的结点列表中！")
                 if tar.has_edge(nid_1, nid_2):  # 判断是否有重复的边
                     # print(f"has edge : {nid_1} - {nid_2}")
                     continue
-                max_edge_id += 1
                 order1 = nodes.index(nid_1)
                 order2 = nodes.index(nid_2)
-                node1_attr = tar.nodes[nid_1]
-                node2_attr = tar.nodes[nid_2]
-                edge_attr = {edge_id_name: str(max_edge_id)}
-                node1 = order1
-                node2 = order2
-                e = EditElement(EditType.ADD_EDGE, node1, node2,
-                                node1_attr=node1_attr, node2_attr=node2_attr, edge_attr=edge_attr)
-
-                tar.add_edge(nid_1, nid_2)
-                tar.edges[nid_1, nid_2][edge_id_name] = str(max_edge_id)
+                if not can_add_edge(order1, order2, edits):
+                    continue
+                edit = ge.EdgeInsertion(order1, order2, directed=False)
             elif r < .90:  # 删除一条边
                 if tar.edges.__len__() <= EDGE_NUM_LOWER_BOUND:  # 判断是否低于边的最低数量
                     print(f"Edge num will lower than EDGE_NUM_LOWER_BOUND({EDGE_NUM_LOWER_BOUND}) ! Edge delete operation is aborted!")
                 nid_1, nid_2 = random.sample(tar.edges, 1)[0]
-                tar_copy = tar.copy()
-                tar_copy.remove_edge(nid_1, nid_2)
-                if not nx.is_connected(tar_copy):  # 如果导致不连通，则抛弃操作
-                    print(f"Graph will be disconnected if delete edge ({nid_1, nid_2}) ! Edge delete operation is aborted!")
+                if not tar.has_edge(nid_1, nid_2):
                     continue
                 order1 = nodes.index(nid_1)
                 order2 = nodes.index(nid_2)
-                node1_attr = tar.nodes[nid_1]
-                node2_attr = tar.nodes[nid_2]
-
-                node1 = order1
-                node2 = order2
-                e = EditElement(EditType.DEL_EDGE, node1, node2,
-                                node1_attr=node1_attr, node2_attr=node2_attr, edge_attr=tar.edges[nid_1, nid_2])
-                tar.remove_edge(nid_1, nid_2)
-            else:  # 改变结点的标签
-                if node_labels is None:
+                if not can_del_edge(order1, order2, edits):
                     continue
-                nid = random.sample(tar.nodes, 1)[0]
-                label = random.sample(node_labels, 1)[0] if np.random.random() < .4 else weighted_sample(node_label_dis)
-                old_label = tar.nodes[nid][node_label_name]
-                order = nodes.index(nid)
-                node_attr = tar.nodes[nid]
-                node1 = order
-                node2 = node_labels.index(label)
-                e = EditElement(EditType.CHG_NODE_LABEL, node1, node2, node1_attr=node_attr)
-                # e = EditNodeLabel(order, old_label, label, node_attr=node_attr)
-                tar.nodes[nid][node_label_name] = label
+                edit = ge.EdgeDeletion(order1, order2, directed=False)
+            else:  # 改变结点的标签
+                continue
+                # if node_labels is None:
+                #     continue
+                # nid = random.sample(tar.nodes, 1)[0]
+                # label = random.sample(node_labels, 1)[0] if np.random.random() < .4 else weighted_sample(node_label_dis)
+                # old_label = tar.nodes[nid][node_label_name]
+                # order = nodes.index(nid)
+                # new_node_attr = [0]*len(node_labels)
+                # new_node_attr[node_labels.index(label)] = 1
+                # edit = ge.NodeReplacement(order, new_node_attr)
+                # tar.nodes[nid][node_label_name] = label
         except Exception as ex:
             print(ex)
             # raise RuntimeError(ex)
-        epd.add_edit_element(e)
+        edits.append(edit)
         i += 1
-
-    if epd.edit_path.__len__() == 0:
-        print("something wrong ... ")
 
     # fig, axes = plt.subplots(1,2)
     # nx.draw(graph,ax=axes[0], with_labels=True)
@@ -328,7 +367,50 @@ def edit_graph(graph: nx.Graph, edit_num: int = None, seed=0, dataset=None, node
     # plt.pause(.82)
     # plt.close(fig)
 
-    return epd
+    return edits
+
+
+def apply(g: nx.Graph, edit: ge.Edit, nodes):
+    offset = 20
+    nodes = list(map(int, nodes))
+    if isinstance(edit, ge.NodeInsertion):
+        g.add_node(f'{offset+max(nodes)}')
+        g.nodes[f'{offset+max(nodes)}'][node_label_name] = AIDS_NODE_LABEL[np.argmax(edit._attribute)]
+    elif isinstance(edit, ge.NodeDeletion):
+        g.remove_node(str(nodes[edit._index]))
+    elif isinstance(edit, ge.EdgeInsertion):
+        u = str(nodes[edit._i])
+        v = str(nodes[edit._j])
+        g.add_edge(u, v)
+    elif isinstance(edit, ge.EdgeDeletion):
+        u = str(nodes[edit._i])
+        v = str(nodes[edit._j])
+        g.remove_edge(u, v)
+    else:
+        raise ValueError("Unsupported edit")
+
+    return g
+
+
+dataset = "AIDS700nef"
+dataset_path = "./dataset/" + dataset
+folders = os.listdir(dataset_path)
+folders = list(filter(lambda x: os.path.isdir( os.path.join(dataset_path, x) ), folders))
+all_graphs = []
+for e in folders:
+    path = os.path.join(dataset_path, e)
+    fns = os.listdir(path)
+    fns = sorted(fns, key=lambda x: int(x[:-5]))
+    # print(fns)
+    for ee in fns:
+        g = nx.read_gexf(os.path.join(path, ee))
+        all_graphs.append(g)
+
+node_label_dis, neighbor_label_dis = extract_node_label_distribution(all_graphs)
+nor_node_label_dis = normalization_distribution(node_label_dis)
+nor_neighbor_node_label_dis = dict()
+for k, v in neighbor_label_dis.items():
+    nor_neighbor_node_label_dis[k] = normalization_distribution(v)
 
 
 def generate_time_series(T):
@@ -369,7 +451,47 @@ def generate_time_series(T):
     3. 当step < T 时，返回1，否则进入4；
     4. 将所有step中得到的A, X, delta, Epsilon分别放进一个list中，得到As, Xs, deltas, Epsilons；
     5. 返回As, Xs, deltas, Epsilons， 程序结束；
+    
+    注意：As, Xs, deltas, Epsilons 应该一样长，deltas, Epsilons的最后一个应该是全零的
     """
+    g = random.sample(all_graphs, 1)[0]
+    A = nxgraph_to_adjlist(g, directed=False)
+    X = nxgraph_to_feature_matrix(g, node_label_name, AIDS_NODE_LABEL)
+    As.append(A)
+    Xs.append(X)
+    for t in range(T):
 
+        edit_num = np.random.randint(1, 4)
+        seed = 3297  # np.random.randint(0, 100000)
+        edits = edit_graph(g, edit_num, nor_node_label_dis, nor_neighbor_node_label_dis, seed=seed)
+        print(f"{t}: {len(g)} {edits}")
+        delta = np.zeros(len(A))
+        Epsilon = np.zeros_like(A)
+        for edit in edits:
+            _d, _E = edit.score(len(A))
+            delta += _d
+            Epsilon += _E
+        nodes = list(g.nodes)
+        for edit in edits:
+            if isinstance(edit, (ge.EdgeDeletion, ge.EdgeInsertion)):
+                print(edit)
+            # A, X = edit.apply(A, X)
+            g = apply(g, edit, nodes)
+            # tmp = A - nxgraph_to_adjlist(g)
+            # if np.sum(tmp) != 0:
+            #     print("Error!!!")
+        A = nxgraph_to_adjlist(g, directed=False)
+        X = nxgraph_to_feature_matrix(g, node_label_name, AIDS_NODE_LABEL)
+        As.append(A)
+        Xs.append(X)
+        deltas.append(delta)
+        Epsilons.append(Epsilon)
+    deltas.append(np.zeros(len(A)))
+    Epsilons.append(np.zeros_like(X))
     return As, Xs, deltas, Epsilons
+
+
+if __name__ == "__main__":
+    As, Xs, deltas, Epsilons = generate_time_series(10)
+    print(deltas)
 
