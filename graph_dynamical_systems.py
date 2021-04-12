@@ -16,6 +16,8 @@ import torch
 import pytorch_graph_edit_networks as gen
 import baseline_models
 import hep_th
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
 
 # model hyperparameters
 num_layers = 2
@@ -31,7 +33,7 @@ print_step     = 1000
 # the number of repitions for each experiment
 R = 5
 # the number of test time series we use to evaluate learning afterwards
-N_test = 10
+N_test = 100
 
 
 # ## Model setup
@@ -98,6 +100,7 @@ eval_criteria = ['node_ins_recall',
 # set up a function to compute precision and recall
 def prec_rec(X, Y):
     # X is the prediction, Y is the target
+    # 计算方式：将预测删除和插入操作视为分别针对删除和插入的二分类任务
     target_insertions = Y > 0.5
     predicted_insertions = X > 0.5
     target_deletions = Y < -0.5
@@ -106,7 +109,7 @@ def prec_rec(X, Y):
     if np.sum(target_insertions) < 0.5:
         ins_rec = 1.
     else:
-        ins_rec  = np.mean(X[target_insertions] > 0.5)
+        ins_rec = np.mean(X[target_insertions] > 0.5)
     # then the insertion precision
     if np.sum(predicted_insertions) < 0.5:
         ins_prec = 1.
@@ -125,6 +128,43 @@ def prec_rec(X, Y):
     return ins_rec, ins_prec, del_rec, del_prec
 
 
+def sklearn_prec_rec(X, Y):
+    # X is the prediction, Y is the target
+    # use sklearn to compute precision and recall
+    if np.ndim(X) == 2 and np.ndim((Y)) == 2:
+        X = np.array(X).flatten()
+        Y = np.array(Y).flatten()
+    target_insertions = Y > 0.5
+    predicted_insertions = X > 0.5
+    target_deletions = Y < -0.5
+    predicted_deletions = X < -0.5
+    # first, check the insertion recall
+    ins_rec = recall_score(target_insertions, predicted_insertions)
+    ins_prec = precision_score(target_insertions, predicted_insertions)
+    del_rec = recall_score(target_deletions, predicted_deletions)
+    del_prec = precision_score(target_deletions, predicted_deletions)
+
+
+    # if np.sum(target_insertions) < 0.5:
+    #     ins_rec = 1.
+    # else:
+    #     ins_rec = np.mean(X[target_insertions] > 0.5)
+    # then the insertion precision
+    # if np.sum(predicted_insertions) < 0.5:
+    #     ins_prec = 1.
+    # else:
+    #     ins_prec = np.mean(Y[predicted_insertions] > 0.5)
+    # # then the deletion recall
+    # if np.sum(target_deletions) < 0.5:
+    #     del_rec = 1.
+    # else:
+    #     del_rec  = np.mean(X[target_deletions] < -0.5)
+    # # and finally the deletion precision
+    # if np.sum(predicted_deletions) < 0.5:
+    #     del_prec = 1.
+    # else:
+    #     del_prec = np.mean(Y[predicted_deletions] < -0.5)
+    return ins_rec, ins_prec, del_rec, del_prec
 # ## Dataset setup
 
 # In[3]:
@@ -134,10 +174,11 @@ import graph_edit_cycles
 import degree_rules
 import game_of_life
 import aids_degree_rules
+import aids
 import random
 
-datasets = ['aids_degree_rules', 'degree_rules', 'edit_cycles', 'game_of_life']
-dim_ins  = [64, 32, 4, 1]
+datasets = ['aids', 'aids_degree_rules', 'degree_rules', 'edit_cycles', 'game_of_life']
+dim_ins  = [32, 64, 32, 4, 1]
 
 # set up a generative function for each data set
 def generate_edit_cycle():
@@ -170,7 +211,15 @@ def generate_aids_degree_rules():
     # the maximum number of nodes that can occur in each graph during evolution
     n_max  = 64
     return aids_degree_rules.generate_time_series_from_random_graph(n_max = n_max)
-generator_funs = [generate_aids_degree_rules, generate_degree_rules, generate_edit_cycle, generate_game_of_life]
+
+
+def generate_aids():
+    T = np.random.randint(8, 16)
+    embed_size = dim_ins[0]
+    return aids.generate_time_series(T, embed_size)
+
+
+generator_funs = [generate_aids, generate_aids_degree_rules, generate_degree_rules, generate_edit_cycle, generate_game_of_life]
 
 
 # ### Actual Experiment

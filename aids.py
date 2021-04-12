@@ -316,7 +316,7 @@ def edit_graph(graph: nx.Graph, edit_num: int = None, node_label_dis=None, neigh
                 edit = ge.NodeInsertion(index, attribute=new_node_attr, directed=False)
             elif r < .3:  # 删除一个结点
                 if tar.nodes.__len__() <= NODE_NUM_LOWER_BOUND:  # 判断是否低于结点的最低数量
-                    print(f"Node num will lower than NODE_NUM_LOWER_BOUND({NODE_NUM_LOWER_BOUND}) ! Node delete operation is aborted!")
+                    # print(f"Node num will lower than NODE_NUM_LOWER_BOUND({NODE_NUM_LOWER_BOUND}) ! Node delete operation is aborted!")
                     continue
                 index = sample_node(tar, node_label_dis, node_label_name=node_label_name)  # random.sample(tar.nodes, 1)[0]
                 if not can_del_node(index, edits):
@@ -334,7 +334,8 @@ def edit_graph(graph: nx.Graph, edit_num: int = None, node_label_dis=None, neigh
                 edit = ge.EdgeInsertion(order1, order2, directed=False)
             elif r < .90:  # 删除一条边
                 if tar.edges.__len__() <= EDGE_NUM_LOWER_BOUND:  # 判断是否低于边的最低数量
-                    print(f"Edge num will lower than EDGE_NUM_LOWER_BOUND({EDGE_NUM_LOWER_BOUND}) ! Edge delete operation is aborted!")
+                    # print(f"Edge num will lower than EDGE_NUM_LOWER_BOUND({EDGE_NUM_LOWER_BOUND}) ! Edge delete operation is aborted!")
+                    continue
                 nid_1, nid_2 = random.sample(tar.edges, 1)[0]
                 if not tar.has_edge(nid_1, nid_2):
                     continue
@@ -413,7 +414,7 @@ for k, v in neighbor_label_dis.items():
     nor_neighbor_node_label_dis[k] = normalization_distribution(v)
 
 
-def generate_time_series(T):
+def generate_time_series(T, embed_size):
     """ Runs the graph edit cycle c for T time steps, starting from step t.
 
     Parameters
@@ -458,13 +459,15 @@ def generate_time_series(T):
     A = nxgraph_to_adjlist(g, directed=False)
     X = nxgraph_to_feature_matrix(g, node_label_name, AIDS_NODE_LABEL)
     As.append(A)
+    if embed_size > X.shape[1]:
+        padding = np.zeros((len(X), embed_size - X.shape[1]))
+        X = np.concatenate((X, padding), axis=1)
     Xs.append(X)
     for t in range(T):
-
         edit_num = np.random.randint(1, 4)
-        seed = 3297  # np.random.randint(0, 100000)
+        seed = np.random.randint(0, 100000)
         edits = edit_graph(g, edit_num, nor_node_label_dis, nor_neighbor_node_label_dis, seed=seed)
-        print(f"{t}: {len(g)} {edits}")
+        # print(f"{t}: {len(g)} {edits}")
         delta = np.zeros(len(A))
         Epsilon = np.zeros_like(A)
         for edit in edits:
@@ -473,8 +476,8 @@ def generate_time_series(T):
             Epsilon += _E
         nodes = list(g.nodes)
         for edit in edits:
-            if isinstance(edit, (ge.EdgeDeletion, ge.EdgeInsertion)):
-                print(edit)
+            # if isinstance(edit, (ge.EdgeDeletion, ge.EdgeInsertion)):
+            #     print(edit)
             # A, X = edit.apply(A, X)
             g = apply(g, edit, nodes)
             # tmp = A - nxgraph_to_adjlist(g)
@@ -482,12 +485,15 @@ def generate_time_series(T):
             #     print("Error!!!")
         A = nxgraph_to_adjlist(g, directed=False)
         X = nxgraph_to_feature_matrix(g, node_label_name, AIDS_NODE_LABEL)
+        if embed_size > X.shape[1]:
+            padding = np.zeros((len(X), embed_size - X.shape[1]))
+            X = np.concatenate((X, padding), axis=1)
         As.append(A)
         Xs.append(X)
         deltas.append(delta)
         Epsilons.append(Epsilon)
     deltas.append(np.zeros(len(A)))
-    Epsilons.append(np.zeros_like(X))
+    Epsilons.append(np.zeros_like(A))
     return As, Xs, deltas, Epsilons
 
 
