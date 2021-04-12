@@ -139,10 +139,10 @@ def sklearn_prec_rec(X, Y):
     target_deletions = Y < -0.5
     predicted_deletions = X < -0.5
     # first, check the insertion recall
-    ins_rec = recall_score(target_insertions, predicted_insertions)
-    ins_prec = precision_score(target_insertions, predicted_insertions)
-    del_rec = recall_score(target_deletions, predicted_deletions)
-    del_prec = precision_score(target_deletions, predicted_deletions)
+    ins_rec = recall_score(target_insertions, predicted_insertions, zero_division=1)
+    ins_prec = precision_score(target_insertions, predicted_insertions, zero_division=1)
+    del_rec = recall_score(target_deletions, predicted_deletions, zero_division=1)
+    del_prec = precision_score(target_deletions, predicted_deletions, zero_division=1)
 
 
     # if np.sum(target_insertions) < 0.5:
@@ -177,8 +177,8 @@ import aids_degree_rules
 import aids
 import random
 
-datasets = ['aids', 'aids_degree_rules', 'degree_rules', 'edit_cycles', 'game_of_life']
-dim_ins  = [32, 64, 32, 4, 1]
+datasets = ['aids', 'aids_degree_rules', 'degree_rules']  # , 'edit_cycles', 'game_of_life']
+dim_ins  = [32, 64, 32]  # , 4, 1]
 
 # set up a generative function for each data set
 def generate_edit_cycle():
@@ -219,7 +219,7 @@ def generate_aids():
     return aids.generate_time_series(T, embed_size)
 
 
-generator_funs = [generate_aids, generate_aids_degree_rules, generate_degree_rules, generate_edit_cycle, generate_game_of_life]
+generator_funs = [generate_aids, generate_aids_degree_rules, generate_degree_rules]  #, generate_edit_cycle, generate_game_of_life]
 
 
 # ### Actual Experiment
@@ -243,12 +243,15 @@ for d in range(len(datasets)):
         print('--- model %s ---' % models[k])
         # load partial results if possible
         results_file = 'results/%s_%s_results.csv' % (datasets[d], models[k])
+        skl_results_file = 'results/%s_%s_skl_results.csv' % (datasets[d], models[k])
         curves_file = 'results/%s_%s_learning_curves.csv' % (datasets[d], models[k])
         if os.path.exists(results_file):
             results = np.loadtxt(results_file, skiprows = 1, delimiter = '\t')
+            skl_results = np.loadtxt(skl_results_file, skiprows=1, delimiter='\t')
             learning_curves = np.loadtxt(curves_file, delimiter = '\t')
         else:
             results = np.full((R, len(eval_criteria)), np.nan)
+            skl_results = np.full((R, len(eval_criteria)), np.nan)
             learning_curves = np.full((max_epochs, R), np.nan)
         # iterate over experimental repeats
         for r in range(R):
@@ -298,6 +301,7 @@ for d in range(len(datasets)):
                     break
             # perform evaluation on new time series
             results[r, :] = 0.
+            skl_results[r, :] = 0.
             T = 0
             for j in range(N_test):
                 # get a random time series from the dataset
@@ -309,19 +313,28 @@ for d in range(len(datasets)):
                     results[r, :4] += prec_rec(delta, deltas[t])
                     # assess edge edit precision and recall
                     results[r, 4:] += prec_rec(Epsilon, Epsilons[t])
+
+                    skl_results[r, :4] += sklearn_prec_rec(delta, deltas[t])
+                    skl_results[r, 4:] += sklearn_prec_rec(Epsilon, Epsilons[t])
                         
                 T += len(As)
             results[r, :] /= T
+            skl_results[r, :] /= T
             # store runtime
             runtimes[r, k] = time.time() - start_time
             np.savetxt(runtimes_file, runtimes, delimiter = '\t', fmt = '%g', header = '\t'.join(models), comments = '')
             # store results
             np.savetxt(results_file, results, delimiter = '\t', fmt = '%g', header = '\t'.join(eval_criteria), comments = '')
+            np.savetxt(skl_results_file, skl_results, delimiter='\t', fmt='%g', header='\t'.join(eval_criteria), comments='')
             # store learning curves
             np.savetxt(curves_file, learning_curves, delimiter = '\t', fmt = '%g')
         # print results
         for crit in range(len(eval_criteria)):
             print('%s: %g +- %g' % (eval_criteria[crit], np.mean(results[:, crit]), np.std(results[:, crit])))
+
+        for crit in range(len(eval_criteria)):
+            print('skl - %s: %g +- %g' % (eval_criteria[crit], np.mean(skl_results[:, crit]), np.std(skl_results[:, crit])))
+
 
 
 # In[ ]:
