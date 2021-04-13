@@ -33,17 +33,16 @@ __version__ = '1.0.0'
 __maintainer__ = 'Zhiyan guo'
 __email__ = 'zhiyanguo@hnu.edu.cn'
 
-node_label_name = "type"
-node_id_name = "label"
+node_label_name = "degree"
+node_id_name = "id"
 edge_id_name = "id"
 
-AIDS_NODE_LABEL = ['Si', 'O', 'Se', 'Ni', 'Cl', 'Co', 'Tb', 'Bi', 'Ho', 'S', 'P', 'B', 'Pd', 'Cu', 'Br', 'Ru',
-                   'C', 'Sn', 'Pt', 'Ga', 'N', 'Te', 'Hg', 'F', 'Pb', 'Li', 'Sb', 'I', 'As']
-AIDS_NODE_LABEL = sorted(AIDS_NODE_LABEL)
+IMDBMULTI_NODE_LABEL = None
 
 # 约束条件
 NODE_NUM_LOWER_BOUND = 4
 EDGE_NUM_LOWER_BOUND = 4
+
 
 def extract_node_label_distribution(dataset):
     label_counter = Counter()
@@ -197,7 +196,8 @@ def nxgraph_to_adjlist(g: nx.Graph, directed=False):
 
 
 def nxgraph_to_feature_matrix(g: nx.Graph, node_label_name="type", node_labels=[]):
-    assert len(node_labels) != 0
+    if node_labels is []:
+        node_labels = list(g.nodes)
     nodes = list(g.nodes)
     X = np.zeros(shape=(len(nodes), len(node_labels)))
     for idx, node in enumerate(nodes):
@@ -206,10 +206,6 @@ def nxgraph_to_feature_matrix(g: nx.Graph, node_label_name="type", node_labels=[
         X[idx, label_idx] = 1
 
     return X
-
-
-def is_graph_connected():
-    pass
 
 
 def can_del_node(index, edits):
@@ -282,7 +278,7 @@ def edit_graph(graph: nx.Graph, edit_num: int = None, node_label_dis=None, neigh
     :return:
     '''
 
-    node_labels = AIDS_NODE_LABEL
+    node_labels = IMDBMULTI_NODE_LABEL
 
     tar = graph
     # print(tar)
@@ -376,7 +372,7 @@ def apply(g: nx.Graph, edit: ge.Edit, nodes):
     nodes = list(map(int, nodes))
     if isinstance(edit, ge.NodeInsertion):
         g.add_node(f'{offset+max(nodes)}')
-        g.nodes[f'{offset+max(nodes)}'][node_label_name] = AIDS_NODE_LABEL[np.argmax(edit._attribute)]
+        # g.nodes[f'{offset+max(nodes)}'][node_label_name] = AIDS_NODE_LABEL[np.argmax(edit._attribute)]
     elif isinstance(edit, ge.NodeDeletion):
         g.remove_node(str(nodes[edit._index]))
     elif isinstance(edit, ge.EdgeInsertion):
@@ -405,6 +401,9 @@ for e in folders:
     # print(fns)
     for ee in fns:
         g = nx.read_gexf(os.path.join(path, ee))
+        degree = dict(g.degree)
+        for node in g.nodes:
+            g.nodes[node][node_label_name] = degree[node]
         all_graphs.append(g)
 
 node_label_dis, neighbor_label_dis = extract_node_label_distribution(all_graphs)
@@ -457,7 +456,7 @@ def generate_time_series(T, embed_size):
     """
     g = random.sample(all_graphs, 1)[0]
     A = nxgraph_to_adjlist(g, directed=False)
-    X = nxgraph_to_feature_matrix(g, node_label_name, AIDS_NODE_LABEL)
+    X = nxgraph_to_feature_matrix(g, node_label_name)
     As.append(A)
     if embed_size > X.shape[1]:
         padding = np.zeros((len(X), embed_size - X.shape[1]))
@@ -484,7 +483,7 @@ def generate_time_series(T, embed_size):
             # if np.sum(tmp) != 0:
             #     print("Error!!!")
         A = nxgraph_to_adjlist(g, directed=False)
-        X = nxgraph_to_feature_matrix(g, node_label_name, AIDS_NODE_LABEL)
+        X = nxgraph_to_feature_matrix(g, node_label_name)
         if embed_size > X.shape[1]:
             padding = np.zeros((len(X), embed_size - X.shape[1]))
             X = np.concatenate((X, padding), axis=1)

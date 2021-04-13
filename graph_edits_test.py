@@ -131,7 +131,7 @@ class TestGraphEdits(unittest.TestCase):
                 phi[:m] = np.random.permutation(m)
 
             # obtain edits
-            script, phi = graph_edits.mapping_to_edits(A, X, B, Y, phi, directed = False, return_full_phi = True)
+            script, phi = graph_edits.mapping_to_edits(A, X, B, Y, phi, directed = False, return_full_psi = True)
 
             # apply the script
             Bpred, Ypred = graph_edits.apply_script(script, A, X)

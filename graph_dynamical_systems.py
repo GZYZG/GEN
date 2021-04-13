@@ -16,6 +16,8 @@ import torch
 import pytorch_graph_edit_networks as gen
 import baseline_models
 import hep_th
+from utils import utils
+from config import config
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 
@@ -256,8 +258,8 @@ for d in range(len(datasets)):
         # iterate over experimental repeats
         for r in range(R):
             # check if this repeat is already evaluated; if so, skip it
-            # if not np.isnan(learning_curves[0, r]):
-            #     continue
+            if not np.isnan(learning_curves[0, r]):
+                continue
             print('-- repeat %d of %d --' % (r+1, R))
             start_time = time.time()
             # set up model
@@ -328,6 +330,12 @@ for d in range(len(datasets)):
             np.savetxt(skl_results_file, skl_results, delimiter='\t', fmt='%g', header='\t'.join(eval_criteria), comments='')
             # store learning curves
             np.savetxt(curves_file, learning_curves, delimiter = '\t', fmt = '%g')
+            try:
+                sn = "model.pth"
+                sn = utils.gen_model_save_name(models[k], datasets[d], epoch, repeat=r, loss=loss_funs[k].__name__)
+                torch.save(model.state_dict(), os.path.join(config.model_dir, f"{models[k]}_repeat{r}_{datasets[d]}.pth"))
+            except Exception as exp:
+                print(f"Error occurs while saving model to {sn}, Error info: {exp.args}")
         # print results
         for crit in range(len(eval_criteria)):
             print('%s: %g +- %g' % (eval_criteria[crit], np.mean(results[:, crit]), np.std(results[:, crit])))

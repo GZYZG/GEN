@@ -498,6 +498,6 @@ def generate_time_series(T, embed_size):
 
 
 if __name__ == "__main__":
-    As, Xs, deltas, Epsilons = generate_time_series(10, embed_size=32)
+    As, Xs, deltas, Epsilons = generate_time_series(10)
     print(deltas)
 
