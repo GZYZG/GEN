@@ -28,7 +28,7 @@ val_dataset_dir = os.path.join(dataset_dir, "val")
 test_dataset_dir = os.path.join(dataset_dir, "test")
 output_dir = os.path.join(proj_root, "results")
 model_dir = os.path.join(output_dir, "module")
-model_name = "net342-0.820-1.287-512x512.pth"
+model_name = "GEN_crossent_repeat1_aids.pth"
 
 parser.add_argument("--project_root", type=str, default=proj_root, help="Root path of current project")
 parser.add_argument("--dataset_dir", type=str, default=dataset_dir, help="Dataset dir path")

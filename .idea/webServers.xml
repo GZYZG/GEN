@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="286eaf33-5fa4-40d9-a73b-4ac4914445c8" name="gen">
+        <fileTransfer rootFolder="/home/gzy/graph-edit-networks-master" accessType="SFTP" host="49.123.67.105" port="22" sshConfigId="704959a1-7da9-4fb3-9ad6-86679c7c2850" sshConfig="gep">
+          <advancedOptions>
+            <advancedOptions controlEncoding="UTF-8" dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

@@ -33,17 +33,16 @@ __version__ = '1.0.0'
 __maintainer__ = 'Zhiyan guo'
 __email__ = 'zhiyanguo@hnu.edu.cn'
 
-node_label_name = "type"
-node_id_name = "label"
+node_label_name = "degree"
+node_id_name = "id"
 edge_id_name = "id"
 
-AIDS_NODE_LABEL = ['Si', 'O', 'Se', 'Ni', 'Cl', 'Co', 'Tb', 'Bi', 'Ho', 'S', 'P', 'B', 'Pd', 'Cu', 'Br', 'Ru',
-                   'C', 'Sn', 'Pt', 'Ga', 'N', 'Te', 'Hg', 'F', 'Pb', 'Li', 'Sb', 'I', 'As']
-AIDS_NODE_LABEL = sorted(AIDS_NODE_LABEL)
+LINUX_NODE_LABEL = None
 
 # 约束条件
 NODE_NUM_LOWER_BOUND = 4
 EDGE_NUM_LOWER_BOUND = 4
+
 
 def extract_node_label_distribution(dataset):
     label_counter = Counter()
@@ -196,20 +195,15 @@ def nxgraph_to_adjlist(g: nx.Graph, directed=False):
     return A
 
 
-def nxgraph_to_feature_matrix(g: nx.Graph, node_label_name="type", node_labels=[]):
-    assert len(node_labels) != 0
-    nodes = list(g.nodes)
-    X = np.zeros(shape=(len(nodes), len(node_labels)))
-    for idx, node in enumerate(nodes):
-        label = g.nodes[node][node_label_name]
-        label_idx = node_labels.index(label)
-        X[idx, label_idx] = 1
+def nxgraph_to_feature_matrix(g: nx.Graph, node_label_name="type"):
+    # nodes = list(g.nodes)
+    # X = np.zeros(shape=(len(nodes), len(nodes)))
+    # for idx, node in enumerate(nodes):
+    #     # label = g.nodes[node][node_label_name]
+    #     # label_idx = node_labels.index(label)
+    #     X[idx, idx] = 1
 
-    return X
-
-
-def is_graph_connected():
-    pass
+    return np.ones((len(g.nodes), len(g.nodes)))
 
 
 def can_del_node(index, edits):
@@ -268,7 +262,7 @@ def can_add_edge(i, j, edits):
     return True
 
 
-def edit_graph(graph: nx.Graph, edit_num: int = None, node_label_dis=None, neighbor_label_dis=None, seed=0):
+def edit_graph(graph: nx.Graph, edit_num: int = None, node_label_dis=None, neighbor_label_dis=None, embed_size=32, seed=0):
     '''
     每一次的编辑中不能有冲突的操作，这里的一次编辑可以包含多个编辑操作，一次指的是连续的不会产生冲突的编辑序列.
     1）新增结点时，不能删除与之相连的结点；
@@ -282,7 +276,7 @@ def edit_graph(graph: nx.Graph, edit_num: int = None, node_label_dis=None, neigh
     :return:
     '''
 
-    node_labels = AIDS_NODE_LABEL
+    node_labels = LINUX_NODE_LABEL
 
     tar = graph
     # print(tar)
@@ -307,10 +301,10 @@ def edit_graph(graph: nx.Graph, edit_num: int = None, node_label_dis=None, neigh
             if r < .18:  # 增加一个结点， 同时要为其增加一条边
                 nid_1 = str(next(node_id_gen))
                 label = nid_1 if not node_labels else weighted_sample(node_label_dis)  # random.sample(node_labels, 1)[0]
-                new_node_attr = [0]*len(node_labels)
-                new_node_attr[node_labels.index(label)] = 1
+                new_node_attr = [0]*embed_size
+                new_node_attr[len(nodes)] = 1
                 # 为新增的结点增加一条边，选择另一结点
-                index = sample_neighbor_node_label(tar, -1, label, neighbor_label_dis, node_label_name=node_label_name)  # random.sample(tar.nodes, 1)[0]
+                index = sample_neighbor_node_label(tar, -1, 1, neighbor_label_dis, node_label_name=node_label_name)  # random.sample(tar.nodes, 1)[0]
                 if not can_add_node(index, edits):
                     continue
                 edit = ge.NodeInsertion(index, attribute=new_node_attr, directed=False)
@@ -356,11 +350,12 @@ def edit_graph(graph: nx.Graph, edit_num: int = None, node_label_dis=None, neigh
                 # new_node_attr[node_labels.index(label)] = 1
                 # edit = ge.NodeReplacement(order, new_node_attr)
                 # tar.nodes[nid][node_label_name] = label
+            edits.append(edit)
+            i += 1
         except Exception as ex:
-            print(ex)
+            print(f"Error occurs with r={r}, Error info: {ex}")
             # raise RuntimeError(ex)
-        edits.append(edit)
-        i += 1
+
 
     # fig, axes = plt.subplots(1,2)
     # nx.draw(graph,ax=axes[0], with_labels=True)
@@ -376,7 +371,7 @@ def apply(g: nx.Graph, edit: ge.Edit, nodes):
     nodes = list(map(int, nodes))
     if isinstance(edit, ge.NodeInsertion):
         g.add_node(f'{offset+max(nodes)}')
-        g.nodes[f'{offset+max(nodes)}'][node_label_name] = AIDS_NODE_LABEL[np.argmax(edit._attribute)]
+        g.nodes[f'{offset+max(nodes)}'][node_label_name] = g.degree[f'{offset+max(nodes)}']
     elif isinstance(edit, ge.NodeDeletion):
         g.remove_node(str(nodes[edit._index]))
     elif isinstance(edit, ge.EdgeInsertion):
@@ -393,7 +388,7 @@ def apply(g: nx.Graph, edit: ge.Edit, nodes):
     return g
 
 
-dataset = "AIDS700nef"
+dataset = "LINUX"
 dataset_path = "./dataset/" + dataset
 folders = os.listdir(dataset_path)
 folders = list(filter(lambda x: os.path.isdir( os.path.join(dataset_path, x) ), folders))
@@ -405,13 +400,21 @@ for e in folders:
     # print(fns)
     for ee in fns:
         g = nx.read_gexf(os.path.join(path, ee))
+        degree = dict(g.degree)
+        for node in g.nodes:
+            g.nodes[node][node_label_name] = degree[node]
         all_graphs.append(g)
 
+max_degree = 20
 node_label_dis, neighbor_label_dis = extract_node_label_distribution(all_graphs)
 nor_node_label_dis = normalization_distribution(node_label_dis)
+left_degree = set(range(0, max_degree+1)) - (nor_node_label_dis.keys())
+nor_node_label_dis.update({k:0 for k in left_degree})
 nor_neighbor_node_label_dis = dict()
 for k, v in neighbor_label_dis.items():
     nor_neighbor_node_label_dis[k] = normalization_distribution(v)
+    left_degree = set(range(0, max_degree + 1)) - (nor_neighbor_node_label_dis[k].keys())
+    nor_neighbor_node_label_dis[k].update({k: 0 for k in left_degree})
 
 
 def generate_time_series(T, embed_size):
@@ -457,7 +460,7 @@ def generate_time_series(T, embed_size):
     """
     g = random.sample(all_graphs, 1)[0]
     A = nxgraph_to_adjlist(g, directed=False)
-    X = nxgraph_to_feature_matrix(g, node_label_name, AIDS_NODE_LABEL)
+    X = nxgraph_to_feature_matrix(g, node_label_name)
     As.append(A)
     if embed_size > X.shape[1]:
         padding = np.zeros((len(X), embed_size - X.shape[1]))
@@ -466,7 +469,7 @@ def generate_time_series(T, embed_size):
     for t in range(T):
         edit_num = np.random.randint(1, 4)
         seed = np.random.randint(0, 100000)
-        edits = edit_graph(g, edit_num, nor_node_label_dis, nor_neighbor_node_label_dis, seed=seed)
+        edits = edit_graph(g, edit_num, nor_node_label_dis, nor_neighbor_node_label_dis, embed_size=embed_size, seed=seed)
         # print(f"{t}: {len(g)} {edits}")
         delta = np.zeros(len(A))
         Epsilon = np.zeros_like(A)
@@ -484,7 +487,7 @@ def generate_time_series(T, embed_size):
             # if np.sum(tmp) != 0:
             #     print("Error!!!")
         A = nxgraph_to_adjlist(g, directed=False)
-        X = nxgraph_to_feature_matrix(g, node_label_name, AIDS_NODE_LABEL)
+        X = nxgraph_to_feature_matrix(g, node_label_name)
         if embed_size > X.shape[1]:
             padding = np.zeros((len(X), embed_size - X.shape[1]))
             X = np.concatenate((X, padding), axis=1)
@@ -498,6 +501,6 @@ def generate_time_series(T, embed_size):
 
 
 if __name__ == "__main__":
-    As, Xs, deltas, Epsilons = generate_time_series(10)
+    As, Xs, deltas, Epsilons = generate_time_series(10, embed_size=32)
     print(deltas)
 

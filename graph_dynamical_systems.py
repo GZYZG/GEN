@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # ## Graph Dynamical Systems
-# 
+# https://gitlab.com/bpaassen/graph-edit-networks
 # This notebooks contains the experiments to evaluate graph edit networks on simple graph dynamical systems, namely the edit cycles, degree rules, and game of life datasets.
 
 # ### Hyperparameter setup
@@ -177,10 +177,12 @@ import degree_rules
 import game_of_life
 import aids_degree_rules
 import aids
+import imdbmulti
+import linux
 import random
 
-datasets = ['aids', 'aids_degree_rules', 'degree_rules']  # , 'edit_cycles', 'game_of_life']
-dim_ins  = [32, 64, 32]  # , 4, 1]
+datasets = ['aids', 'imdbmulti', 'linux']  # 'aids_degree_rules', 'degree_rules']  # , 'edit_cycles', 'game_of_life']
+dim_ins  = [32, 128, 32]  # 64, 32]  # , 4, 1]
 
 # set up a generative function for each data set
 def generate_edit_cycle():
@@ -216,12 +218,23 @@ def generate_aids_degree_rules():
 
 
 def generate_aids():
-    T = np.random.randint(8, 16)
+    T = np.random.randint(6, 16)
     embed_size = dim_ins[0]
     return aids.generate_time_series(T, embed_size)
 
 
-generator_funs = [generate_aids, generate_aids_degree_rules, generate_degree_rules]  #, generate_edit_cycle, generate_game_of_life]
+def generate_imdbmulti():
+    T = np.random.randint(6, 16)
+    embed_size = dim_ins[1]
+    return imdbmulti.generate_time_series(T, embed_size)
+
+
+def generate_linux():
+    T = np.random.randint(6, 16)
+    embed_size = dim_ins[2]
+    return linux.generate_time_series(T, embed_size)
+
+generator_funs = [generate_aids, generate_imdbmulti, generate_linux]  # generate_aids_degree_rules, generate_degree_rules]  #, generate_edit_cycle, generate_game_of_life]
 
 
 # ### Actual Experiment
